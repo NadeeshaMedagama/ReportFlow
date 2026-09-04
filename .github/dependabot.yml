@@ -1,0 +1,78 @@
+# Dependabot keeps npm packages, GitHub Actions and Docker base images current.
+# Updates are grouped so a week produces a handful of PRs rather than dozens.
+# Patch/minor updates that pass CI are merged automatically by
+# .github/workflows/dependabot-auto-merge.yml; majors always wait for a human.
+version: 2
+
+updates:
+  # ---------------------------------------------------------------- npm root
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 10
+    versioning-strategy: increase
+    labels: ["dependencies", "npm"]
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: scope
+    groups:
+      nestjs:
+        patterns: ["@nestjs/*", "reflect-metadata", "rxjs"]
+      prisma:
+        patterns: ["prisma", "@prisma/*"]
+      next-react:
+        patterns: ["next", "react", "react-dom", "@types/react", "@types/react-dom"]
+      tailwind:
+        patterns: ["tailwindcss", "@tailwindcss/*"]
+      testing:
+        patterns: ["jest", "ts-jest", "@types/jest", "supertest", "@types/supertest", "playwright*"]
+      types:
+        patterns: ["@types/*"]
+        exclude-patterns: ["@types/react", "@types/react-dom", "@types/jest", "@types/supertest"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # Prisma majors change generated client APIs; upgrade deliberately.
+      - dependency-name: "prisma"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@prisma/client"
+        update-types: ["version-update:semver-major"]
+
+  # ------------------------------------------------------------ GitHub Actions
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "github-actions"]
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # -------------------------------------------------------------------- Docker
+  - package-ecosystem: docker
+    directories:
+      - "/apps/api"
+      - "/apps/web"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "docker"]
+    commit-message:
+      prefix: "chore(docker)"
+    groups:
+      base-images:
+        patterns: ["*"]
