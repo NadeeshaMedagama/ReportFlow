@@ -1,0 +1,49 @@
+name: Bug report
+description: Something in the app does not work as expected
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Sign in as ...
+        2. Go to ...
+        3. See the error
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Web app (Next.js)
+        - API (NestJS)
+        - Database / migrations
+        - Review workflow
+        - Dashboard / charts
+        - AI assistant
+        - CI / deployment
+    validations:
+      required: true
+
+  - type: dropdown
+    id: role
+    attributes:
+      label: Role you were signed in as
+      options: ["Team member", "Manager", "Admin", "Signed out"]
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error output
+      render: shell
