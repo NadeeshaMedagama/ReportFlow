@@ -1,0 +1,61 @@
+name: Copilot code review
+
+# Requests a GitHub Copilot review on every pull request, so each PR gets an
+# automated first pass before a human looks at it.
+#
+# Requires Copilot code review to be enabled for the repository or organisation
+# (Settings > Copilot > Code review). Without it the request step is skipped
+# rather than failing the workflow.
+on:
+  pull_request:
+    types: [opened, ready_for_review, reopened, synchronize]
+
+concurrency:
+  group: copilot-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  request-review:
+    name: Request Copilot review
+    runs-on: ubuntu-latest
+    # Drafts and Dependabot PRs do not need an AI review pass.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.actor != 'dependabot[bot]'
+    steps:
+      - name: Ask Copilot to review this pull request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pull_number = context.payload.pull_request.number;
+
+            // Skip if Copilot has already been asked on this PR.
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number });
+            const alreadyRequested = (pr.requested_reviewers ?? []).some(
+              (reviewer) => reviewer.login === 'copilot-pull-request-reviewer[bot]',
+            );
+            if (alreadyRequested) {
+              core.info('Copilot review already requested on this pull request.');
+              return;
+            }
+
+            try {
+              await github.rest.pulls.requestReviewers({
+                owner,
+                repo,
+                pull_number,
+                reviewers: ['copilot-pull-request-reviewer[bot]'],
+              });
+              core.info('Copilot code review requested.');
+            } catch (error) {
+              // 403/422 means Copilot code review is not enabled for this repo.
+              core.warning(
+                `Could not request a Copilot review (${error.status}): ${error.message}. ` +
+                'Enable Copilot code review in repository settings to use this workflow.',
+              );
+            }
