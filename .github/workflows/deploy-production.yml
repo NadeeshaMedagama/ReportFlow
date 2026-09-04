@@ -1,0 +1,161 @@
+name: Deploy production
+
+# Promotes a released build to production: applies database migrations, then
+# rolls out the API and web images. The `production` environment gates the run,
+# so required reviewers and wait timers configured on that environment apply.
+#
+# Required secrets on the `production` environment:
+#   PRODUCTION_DATABASE_URL   PostgreSQL connection string for migrations
+#   DEPLOY_WEBHOOK_URL        Render/Railway/Fly deploy hook (optional)
+#   DEPLOY_WEBHOOK_URL_WEB    Deploy hook for the web app (optional)
+# Optional environment variables:
+#   PRODUCTION_API_URL        Used for the post-deploy health check
+#   PRODUCTION_WEB_URL        Used for the post-deploy smoke check
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or SHA to deploy (defaults to the current branch)"
+        required: false
+        type: string
+      skip_migrations:
+        description: "Skip database migrations"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  # Never run two production deploys at once, and never cancel one midway.
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # --------------------------------------------------------------------------
+  migrate:
+    name: Apply database migrations
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_WEB_URL }}
+    if: ${{ !inputs.skip_migrations }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Show pending migrations
+        run: npx prisma migrate status --schema apps/api/prisma/schema.prisma || true
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+
+      - name: Apply migrations
+        run: npm run db:deploy
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+
+  # --------------------------------------------------------------------------
+  deploy:
+    name: Roll out ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    needs: [migrate]
+    # Run even when migrations were skipped, but not if they failed.
+    if: always() && needs.migrate.result != 'failure' && needs.migrate.result != 'cancelled'
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_WEB_URL }}
+
+    strategy:
+      max-parallel: 1
+      matrix:
+        # API first: the web app talks to it.
+        app: [api, web]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Trigger the deploy hook
+        env:
+          HOOK: ${{ matrix.app == 'web' && secrets.DEPLOY_WEBHOOK_URL_WEB || secrets.DEPLOY_WEBHOOK_URL }}
+          IMAGE_TAG: ${{ github.event.release.tag_name || inputs.ref || github.sha }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::warning::No deploy hook configured for ${{ matrix.app }}; skipping the rollout step."
+            echo "Configure DEPLOY_WEBHOOK_URL / DEPLOY_WEBHOOK_URL_WEB on the production environment."
+            exit 0
+          fi
+          echo "Deploying ${{ matrix.app }} at $IMAGE_TAG"
+          STATUS=$(curl -sS -o /tmp/deploy-response -w '%{http_code}' -X POST "$HOOK" \
+            -H 'Content-Type: application/json' \
+            -d "{\"ref\":\"$IMAGE_TAG\",\"app\":\"${{ matrix.app }}\"}")
+          echo "Hook responded $STATUS"
+          cat /tmp/deploy-response || true
+          case "$STATUS" in
+            2*) echo "Rollout requested." ;;
+            *) echo "::error::Deploy hook failed with HTTP $STATUS"; exit 1 ;;
+          esac
+
+  # --------------------------------------------------------------------------
+  verify:
+    name: Post-deploy checks
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_WEB_URL }}
+
+    steps:
+      - name: Wait for the API health endpoint
+        if: vars.PRODUCTION_API_URL != ''
+        run: |
+          echo "Polling ${{ vars.PRODUCTION_API_URL }}/health"
+          for i in $(seq 1 30); do
+            if curl -sf "${{ vars.PRODUCTION_API_URL }}/health" -o /tmp/health; then
+              cat /tmp/health
+              echo
+              echo "API is healthy."
+              exit 0
+            fi
+            echo "Attempt $i: not ready yet."
+            sleep 10
+          done
+          echo "::error::API did not become healthy within 5 minutes."
+          exit 1
+
+      - name: Check that the web app serves its login page
+        if: vars.PRODUCTION_WEB_URL != ''
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sfI "${{ vars.PRODUCTION_WEB_URL }}/login" >/dev/null; then
+              echo "Web app is serving."
+              exit 0
+            fi
+            echo "Attempt $i: not ready yet."
+            sleep 10
+          done
+          echo "::error::Web app did not respond within 5 minutes."
+          exit 1
+
+      - name: Summary
+        run: |
+          {
+            echo "### Production deploy complete"
+            echo
+            echo "- Ref: \`${{ github.event.release.tag_name || inputs.ref || github.sha }}\`"
+            echo "- API: ${{ vars.PRODUCTION_API_URL || 'not configured' }}"
+            echo "- Web: ${{ vars.PRODUCTION_WEB_URL || 'not configured' }}"
+          } >> "$GITHUB_STEP_SUMMARY"

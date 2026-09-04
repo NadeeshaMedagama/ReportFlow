@@ -1,0 +1,89 @@
+# GitHub Marketplace action for ReportFlow.
+#
+# Checks weekly report compliance against a running ReportFlow API and writes a
+# summary to the workflow run. Teams add it to a scheduled workflow to get a
+# nudge when reports are missing, or to a release workflow to record the state
+# of the week.
+#
+# Example:
+#   - uses: your-org/reportflow@v1
+#     with:
+#       api-url: https://reports.example.com
+#       email: ${{ secrets.REPORTFLOW_EMAIL }}
+#       password: ${{ secrets.REPORTFLOW_PASSWORD }}
+#       minimum-compliance: 80
+name: ReportFlow weekly compliance check
+description: Check weekly report submission compliance for a team and summarise blockers awaiting review.
+author: ReportFlow
+
+branding:
+  icon: check-square
+  color: purple
+
+inputs:
+  api-url:
+    description: Base URL of the ReportFlow API, for example https://reports.example.com
+    required: true
+  email:
+    description: Email of a manager or admin account used to read the dashboard.
+    required: true
+  password:
+    description: Password for that account. Always pass this from a secret.
+    required: true
+  week-start:
+    description: Monday of the week to check, as YYYY-MM-DD. Defaults to the current week.
+    required: false
+    default: ""
+  minimum-compliance:
+    description: Fail the step when the submission compliance rate is below this percentage. Set to 0 to never fail.
+    required: false
+    default: "0"
+  fail-on-missing:
+    description: Fail the step when any team member has not submitted for the week.
+    required: false
+    default: "false"
+  summary:
+    description: Write a Markdown table to the workflow job summary.
+    required: false
+    default: "true"
+
+outputs:
+  compliance-rate:
+    description: Percentage of active team members who submitted a report for the week.
+    value: ${{ steps.check.outputs.compliance-rate }}
+  submitted:
+    description: Number of members who submitted.
+    value: ${{ steps.check.outputs.submitted }}
+  pending:
+    description: Number of members who have not submitted yet.
+    value: ${{ steps.check.outputs.pending }}
+  awaiting-review:
+    description: Number of submitted reports awaiting a manager decision.
+    value: ${{ steps.check.outputs.awaiting-review }}
+  needs-correction:
+    description: Number of reports sent back for correction this week.
+    value: ${{ steps.check.outputs.needs-correction }}
+  open-blockers:
+    description: Number of blockers reported across the team this week.
+    value: ${{ steps.check.outputs.open-blockers }}
+  missing-members:
+    description: Comma-separated names of members who have not submitted.
+    value: ${{ steps.check.outputs.missing-members }}
+  week-label:
+    description: Human-readable label of the week that was checked.
+    value: ${{ steps.check.outputs.week-label }}
+
+runs:
+  using: composite
+  steps:
+    - id: check
+      shell: bash
+      env:
+        INPUT_API_URL: ${{ inputs.api-url }}
+        INPUT_EMAIL: ${{ inputs.email }}
+        INPUT_PASSWORD: ${{ inputs.password }}
+        INPUT_WEEK_START: ${{ inputs.week-start }}
+        INPUT_MINIMUM_COMPLIANCE: ${{ inputs.minimum-compliance }}
+        INPUT_FAIL_ON_MISSING: ${{ inputs.fail-on-missing }}
+        INPUT_SUMMARY: ${{ inputs.summary }}
+      run: node "${{ github.action_path }}/.github/action-scripts/compliance-check.mjs"
