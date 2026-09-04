@@ -1,0 +1,59 @@
+name: Dependency review
+
+# Blocks pull requests that introduce vulnerable or badly licensed dependencies,
+# and keeps an eye on the committed lockfile.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: Review dependency changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependency review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+          # Copyleft licences would complicate distributing this app.
+          deny-licenses: AGPL-3.0, AGPL-3.0-only, AGPL-3.0-or-later, GPL-3.0, GPL-3.0-only
+
+  audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fails on any high-severity advisory that is not recorded in
+      # .github/audit-allowlist.json with a reason and a review date.
+      - name: Audit production dependencies
+        run: node scripts/audit-check.mjs --production --level=high
+
+      - name: Audit all dependencies (advisory only)
+        run: node scripts/audit-check.mjs --level=moderate || true
+
+      - name: Fail if the lockfile is out of date
+        run: |
+          npm install --package-lock-only --no-audit --no-fund
+          if ! git diff --quiet -- package-lock.json; then
+            echo "package-lock.json is out of sync with the package.json files."
+            echo "Run 'npm install' and commit the updated lockfile."
+            git --no-pager diff --stat -- package-lock.json
+            exit 1
+          fi
+          echo "Lockfile is in sync."
