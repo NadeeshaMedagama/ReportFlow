@@ -1,0 +1,16 @@
+# Keep the Docker build context small and secret-free
+.git
+.github
+node_modules
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/*.log
+.env
+**/.env
+**/.env.*
+!**/.env.example
+docs
+*.md
+!README.md
