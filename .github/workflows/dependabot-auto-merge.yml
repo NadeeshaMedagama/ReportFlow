@@ -1,0 +1,61 @@
+name: Dependabot auto-merge
+
+# Enables auto-merge on Dependabot pull requests that are safe to take
+# automatically: patch and minor updates, plus any development-dependency
+# update. Major updates and production-dependency majors are labelled and
+# left for a human. Auto-merge only completes once the required CI checks
+# pass, so a broken update never lands.
+#
+# Requires "Allow auto-merge" in repository settings, and a branch protection
+# rule on main requiring the "CI passed" check.
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Enable auto-merge
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Approve safe updates
+        if: >-
+          steps.metadata.outputs.update-type != 'version-update:semver-major' ||
+          steps.metadata.outputs.dependency-type == 'direct:development'
+        run: |
+          gh pr review --approve "$PR_URL" \
+            --body "Automatically approved: ${{ steps.metadata.outputs.update-type }} update to ${{ steps.metadata.outputs.dependency-names }}."
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge for safe updates
+        if: >-
+          steps.metadata.outputs.update-type != 'version-update:semver-major' ||
+          steps.metadata.outputs.dependency-type == 'direct:development'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Flag major production updates for manual review
+        if: >-
+          steps.metadata.outputs.update-type == 'version-update:semver-major' &&
+          steps.metadata.outputs.dependency-type != 'direct:development'
+        run: |
+          gh pr edit "$PR_URL" --add-label "needs-manual-review"
+          gh pr comment "$PR_URL" --body "This is a **major** update to a production dependency (\`${{ steps.metadata.outputs.dependency-names }}\`: ${{ steps.metadata.outputs.previous-version }} to ${{ steps.metadata.outputs.new-version }}). Auto-merge is intentionally not enabled - please review the changelog before merging."
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
