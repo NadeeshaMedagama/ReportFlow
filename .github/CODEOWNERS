@@ -1,0 +1,10 @@
+# Default reviewers for everything.
+# Replace @your-github-username with the real owner before enabling
+# "Require review from Code Owners" in branch protection.
+*                       @your-github-username
+
+# Areas worth a closer look
+/apps/api/src/auth/     @your-github-username
+/apps/api/prisma/       @your-github-username
+/.github/workflows/     @your-github-username
+/action.yml             @your-github-username
