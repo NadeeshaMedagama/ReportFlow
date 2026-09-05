@@ -1,0 +1,66 @@
+# Local development database:  docker compose up -d
+# Full stack (db + api + web):  docker compose --profile full up --build
+#
+# If something already listens on 5432 (a local PostgreSQL install, for
+# example), publish the container on another host port:
+#   DB_PORT=5433 docker compose --profile full up --build
+#
+# Seeding demo data runs from the host, because the production API image
+# deliberately ships without the TypeScript tooling the seed script needs:
+#   DATABASE_URL="postgresql://postgres:postgres@localhost:${DB_PORT:-5432}/weekly_reports?schema=public" npm run db:seed
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: weekly-reports-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: weekly_reports
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - weekly_reports_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d weekly_reports"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: reportflow-api:local
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/weekly_reports?schema=public
+      JWT_SECRET: change-me-to-a-long-random-secret
+      JWT_EXPIRES_IN: 8h
+      PORT: 4000
+      CORS_ORIGIN: http://localhost:3000
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5}
+    ports:
+      - "4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:4000
+    image: reportflow-web:local
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  weekly_reports_pgdata:
