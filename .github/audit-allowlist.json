@@ -1,0 +1,50 @@
+{
+  "$comment": [
+    "Known npm audit findings that are accepted for now, checked by scripts/audit-check.mjs.",
+    "Every entry needs a reason and a reviewBy date. The check fails on any finding that is",
+    "not listed here, and warns when an entry has expired or is no longer reported so the",
+    "list cannot quietly rot."
+  ],
+  "allow": [
+    {
+      "package": "deepmerge-ts",
+      "advisory": "GHSA-ggr8-5vv4-36mx",
+      "severity": "high",
+      "reason": "Stack exhaustion when merging recursive object graphs. Reached only through @prisma/config, which the Prisma CLI uses to read our own committed prisma config during migrations and client generation. No untrusted input reaches it. The only fix is Prisma 7, a major upgrade that changes client generation.",
+      "introducedBy": "prisma > @prisma/config > deepmerge-ts",
+      "reviewBy": "2026-12-31"
+    },
+    {
+      "package": "@prisma/config",
+      "advisory": "GHSA-ggr8-5vv4-36mx",
+      "severity": "high",
+      "reason": "Same chain as deepmerge-ts above; @prisma/config is the intermediate package.",
+      "introducedBy": "prisma > @prisma/config",
+      "reviewBy": "2026-12-31"
+    },
+    {
+      "package": "prisma",
+      "advisory": "GHSA-ggr8-5vv4-36mx",
+      "severity": "high",
+      "reason": "Top of the deepmerge-ts chain. The Prisma CLI runs at build and migration time, not in the request path.",
+      "introducedBy": "direct dependency (needed for `prisma migrate deploy` in the API image)",
+      "reviewBy": "2026-12-31"
+    },
+    {
+      "package": "postcss",
+      "advisory": "GHSA-qx2v-qp2m-jg93,GHSA-6g55-p6wh-862q,GHSA-fxqj-rqcc-2cmp,GHSA-r28c-9q8g-f849",
+      "severity": "high",
+      "reason": "PostCSS is bundled inside Next.js and runs at build time over our own first-party CSS. The advisories require attacker-controlled CSS or sourceMappingURL comments, which cannot occur here. Fixed only in Next.js 16, a major upgrade.",
+      "introducedBy": "next > postcss",
+      "reviewBy": "2026-12-31"
+    },
+    {
+      "package": "next",
+      "advisory": "GHSA-qx2v-qp2m-jg93",
+      "severity": "moderate",
+      "reason": "Reported because of the bundled postcss above.",
+      "introducedBy": "direct dependency",
+      "reviewBy": "2026-12-31"
+    }
+  ]
+}
