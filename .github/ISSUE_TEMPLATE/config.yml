@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Setup help
+    url: https://github.com/ORG/REPO#readme
+    about: Read the README first; it covers installing, running the database and both apps.

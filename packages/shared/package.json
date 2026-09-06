@@ -1,0 +1,8 @@
+{
+  "name": "@weekly-report/shared",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared enums, labels and API contract types used by the web app",
+  "main": "./index.ts",
+  "types": "./index.ts"
+}
