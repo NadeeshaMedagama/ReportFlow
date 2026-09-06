@@ -8,3 +8,10 @@ coverage
 *.log
 .DS_Store
 *.tsbuildinfo
+
+# JetBrains IDE settings
+.idea/
+
+# Guard: a nested clone of this repo here was previously committed as a
+# stray gitlink (submodule with no .gitmodules), breaking clones of develop-02.
+/weekly-report-generator/
