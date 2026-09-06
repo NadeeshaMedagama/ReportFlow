@@ -19,9 +19,6 @@
     "prisma:studio": "prisma studio",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
-  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",
     "@nestjs/common": "^11.0.0",
