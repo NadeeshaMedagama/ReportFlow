@@ -41,7 +41,7 @@ jobs:
         app: [api, web]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Verify Docker Hub credentials are configured
         env:

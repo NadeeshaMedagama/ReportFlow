@@ -45,7 +45,7 @@ jobs:
     if: ${{ !inputs.skip_migrations }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref || github.ref }}
 
@@ -85,7 +85,7 @@ jobs:
         app: [api, web]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref || github.ref }}
 
