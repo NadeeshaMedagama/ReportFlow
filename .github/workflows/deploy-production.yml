@@ -17,8 +17,9 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Tag or SHA to deploy (defaults to the current branch)"
+        description: "Tag, branch or SHA to deploy. Leave this box empty to deploy the branch selected above."
         required: false
+        default: ""
         type: string
       skip_migrations:
         description: "Skip database migrations"
@@ -36,9 +37,74 @@ permissions:
 
 jobs:
   # --------------------------------------------------------------------------
+  # Turn whatever was requested into one concrete commit SHA before any
+  # deploying happens. This runs outside the `production` environment so a bad
+  # ref fails immediately with a readable message instead of after the approval
+  # gate, and pinning the SHA keeps every job below on the same commit even if
+  # the branch moves mid-run.
+  resolve:
+    name: Resolve deploy ref
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+      display: ${{ steps.resolve.outputs.display }}
+
+    steps:
+      - name: Resolve and validate the requested ref
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          REQUESTED: ${{ inputs.ref }}
+          FALLBACK: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+
+          # A published release always deploys its own tag. Otherwise use what
+          # the operator typed, and fall back to the branch the run started from.
+          requested=$(printf '%s' "${REQUESTED:-}" | tr -d '[:space:]')
+          if [ -n "${RELEASE_TAG:-}" ]; then
+            wanted="$RELEASE_TAG"; source="release tag"
+          elif [ -n "$requested" ]; then
+            wanted="$requested"; source="workflow_dispatch input"
+          else
+            wanted="$FALLBACK"; source="branch this run was started from"
+          fi
+
+          # Accept refs/heads/x and refs/tags/x as well as bare names.
+          lookup="${wanted#refs/heads/}"
+          lookup="${lookup#refs/tags/}"
+
+          echo "Resolving '$wanted' ($source)"
+
+          if ! sha=$(gh api "repos/$REPO/commits/$lookup" --jq .sha 2>/dev/null); then
+            echo "::error title=Unknown deploy ref::'$wanted' is not a branch, tag or commit in $REPO, so there is nothing to check out."
+            {
+              echo "### Deploy aborted: unknown ref \`$wanted\`"
+              echo
+              echo "Nothing named \`$wanted\` exists in \`$REPO\`."
+              echo "Leave the **Ref** box empty to deploy the branch you picked in *Use workflow from*,"
+              echo "or enter one of these:"
+              echo
+              echo "**Recent tags**"
+              gh api "repos/$REPO/tags?per_page=10" --jq '.[].name' 2>/dev/null | sed 's/^/- /' || echo "- (none)"
+              echo
+              echo "**Branches**"
+              gh api "repos/$REPO/branches?per_page=20" --jq '.[].name' 2>/dev/null | sed 's/^/- /' || echo "- (none)"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "display=$lookup" >> "$GITHUB_OUTPUT"
+          echo "Deploying $wanted -> $sha"
+
+  # --------------------------------------------------------------------------
   migrate:
     name: Apply database migrations
     runs-on: ubuntu-latest
+    needs: [resolve]
     environment:
       name: production
       url: ${{ vars.PRODUCTION_WEB_URL }}
@@ -47,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ needs.resolve.outputs.sha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -71,9 +137,14 @@ jobs:
   deploy:
     name: Roll out ${{ matrix.app }}
     runs-on: ubuntu-latest
-    needs: [migrate]
-    # Run even when migrations were skipped, but not if they failed.
-    if: always() && needs.migrate.result != 'failure' && needs.migrate.result != 'cancelled'
+    needs: [resolve, migrate]
+    # Run even when migrations were skipped, but not if they failed - and never
+    # when the ref could not be resolved, which always() would otherwise allow.
+    if: >-
+      always()
+      && needs.resolve.result == 'success'
+      && needs.migrate.result != 'failure'
+      && needs.migrate.result != 'cancelled'
     environment:
       name: production
       url: ${{ vars.PRODUCTION_WEB_URL }}
@@ -87,12 +158,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ needs.resolve.outputs.sha }}
 
       - name: Trigger the deploy hook
         env:
           HOOK: ${{ matrix.app == 'web' && secrets.DEPLOY_WEBHOOK_URL_WEB || secrets.DEPLOY_WEBHOOK_URL }}
-          IMAGE_TAG: ${{ github.event.release.tag_name || inputs.ref || github.sha }}
+          IMAGE_TAG: ${{ needs.resolve.outputs.display }}
         run: |
           if [ -z "$HOOK" ]; then
             echo "::warning::No deploy hook configured for ${{ matrix.app }}; skipping the rollout step."
@@ -114,7 +185,7 @@ jobs:
   verify:
     name: Post-deploy checks
     runs-on: ubuntu-latest
-    needs: [deploy]
+    needs: [resolve, deploy]
     environment:
       name: production
       url: ${{ vars.PRODUCTION_WEB_URL }}
@@ -156,7 +227,7 @@ jobs:
           {
             echo "### Production deploy complete"
             echo
-            echo "- Ref: \`${{ github.event.release.tag_name || inputs.ref || github.sha }}\`"
+            echo "- Ref: \`${{ needs.resolve.outputs.display }}\` (\`${{ needs.resolve.outputs.sha }}\`)"
             echo "- API: ${{ vars.PRODUCTION_API_URL || 'not configured' }}"
             echo "- Web: ${{ vars.PRODUCTION_WEB_URL || 'not configured' }}"
           } >> "$GITHUB_STEP_SUMMARY"
