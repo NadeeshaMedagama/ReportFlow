@@ -1,0 +1,19 @@
+name: ReportFlow CodeQL configuration
+
+# Analyse application source only. Generated output, dependencies and the
+# seed/test fixtures produce noise without adding signal.
+paths:
+  - apps/api/src
+  - apps/api/prisma
+  - apps/web/app
+  - apps/web/components
+  - apps/web/lib
+  - packages/shared
+
+paths-ignore:
+  - "**/node_modules"
+  - "**/dist"
+  - "**/.next"
+  - "**/*.spec.ts"
+  - "**/*.e2e-spec.ts"
+  - docs

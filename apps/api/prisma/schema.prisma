@@ -1,0 +1,274 @@
+// Prisma schema for the Weekly Report Generator.
+//
+// Core entities: User (with Role), Project, ProjectMember, Report and its
+// fixed-structure children (ReportTask, Blocker, Achievement, HoursEntry),
+// ReportVersion (immutable snapshot per submission), ReviewHistory (every
+// manager decision, linked to the version it was made against) and
+// ActivityLog (feed of recent actions).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  TEAM_MEMBER
+  MANAGER
+  ADMIN
+}
+
+enum ReportStatus {
+  DRAFT
+  SUBMITTED
+  NEEDS_CORRECTION
+  APPROVED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  BLOCKED
+}
+
+/// Fixed list of work categories used for the "hours by task type" breakdown.
+enum WorkCategory {
+  DEVELOPMENT
+  TESTING
+  MEETINGS
+  DOCUMENTATION
+  DESIGN
+  SUPPORT
+  OTHER
+}
+
+enum ReviewAction {
+  APPROVED
+  CHANGES_REQUESTED
+}
+
+enum ActivityType {
+  REPORT_CREATED
+  REPORT_SUBMITTED
+  REPORT_RESUBMITTED
+  REPORT_APPROVED
+  REPORT_CHANGES_REQUESTED
+  PROJECT_CREATED
+  PROJECT_UPDATED
+  PROJECT_DELETED
+  USER_REGISTERED
+  USER_INVITED
+  USER_ROLE_CHANGED
+  USER_DEACTIVATED
+  USER_REACTIVATED
+}
+
+// ---------------------------------------------------------------------------
+// Users, roles and projects
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(TEAM_MEMBER)
+  jobTitle     String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  reports            Report[]
+  reviews            ReviewHistory[]
+  activities         ActivityLog[]
+  projectMemberships ProjectMember[]
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  reports Report[]
+  members ProjectMember[]
+}
+
+/// Assignment of a team member to a project (optional feature of Section 5).
+model ProjectMember {
+  userId     String
+  projectId  String
+  assignedAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([userId, projectId])
+}
+
+// ---------------------------------------------------------------------------
+// Weekly reports (fixed structure, identical for every user)
+// ---------------------------------------------------------------------------
+
+model Report {
+  id        String       @id @default(cuid())
+  userId    String
+  projectId String
+  weekStart DateTime     @db.Date // always a Monday
+  weekEnd   DateTime     @db.Date // always the following Sunday
+  status    ReportStatus @default(DRAFT)
+
+  nextWeekPlan String  @default("")
+  notes        String?
+  links        String?
+
+  /// Number of times the report has been submitted (= latest version number).
+  currentVersion      Int       @default(0)
+  /// Convenience copy of the most recent reviewer comment.
+  latestReviewComment String?
+  firstSubmittedAt    DateTime?
+  submittedAt         DateTime?
+  reviewedAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project      Project         @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  tasks        ReportTask[]
+  blockers     Blocker[]
+  achievements Achievement[]
+  hours        HoursEntry[]
+  versions     ReportVersion[]
+  reviews      ReviewHistory[]
+  activities   ActivityLog[]
+
+  @@unique([userId, weekStart])
+  @@index([weekStart, status])
+  @@index([projectId])
+  @@index([status])
+}
+
+model ReportTask {
+  id             String       @id @default(cuid())
+  reportId       String
+  sortOrder      Int          @default(0)
+  name           String
+  priority       TaskPriority @default(MEDIUM)
+  status         TaskStatus   @default(COMPLETED)
+  plannedPercent Int          @default(100)
+  actualPercent  Int          @default(0)
+  plannedHours   Float        @default(0)
+  actualHours    Float        @default(0)
+  output         String?
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+}
+
+model Blocker {
+  id          String  @id @default(cuid())
+  reportId    String
+  sortOrder   Int     @default(0)
+  description String
+  isKey       Boolean @default(false)
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+}
+
+model Achievement {
+  id          String  @id @default(cuid())
+  reportId    String
+  sortOrder   Int     @default(0)
+  description String
+  isKey       Boolean @default(false)
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+}
+
+/// Hours worked in the week, broken down by work category (optional section).
+model HoursEntry {
+  id       String       @id @default(cuid())
+  reportId String
+  category WorkCategory
+  hours    Float
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, category])
+}
+
+// ---------------------------------------------------------------------------
+// Review workflow: immutable versions + review history
+// ---------------------------------------------------------------------------
+
+/// Snapshot of the full report content taken every time it is submitted.
+model ReportVersion {
+  id            String   @id @default(cuid())
+  reportId      String
+  versionNumber Int
+  submittedAt   DateTime @default(now())
+  snapshot      Json
+
+  report  Report          @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  reviews ReviewHistory[]
+
+  @@unique([reportId, versionNumber])
+  @@index([reportId, submittedAt])
+}
+
+/// One row per manager decision (approve / request changes).
+model ReviewHistory {
+  id         String       @id @default(cuid())
+  reportId   String
+  versionId  String?
+  reviewerId String
+  action     ReviewAction
+  comment    String?
+  createdAt  DateTime     @default(now())
+
+  report   Report         @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  version  ReportVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+  reviewer User           @relation(fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@index([reportId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Activity feed
+// ---------------------------------------------------------------------------
+
+model ActivityLog {
+  id        String       @id @default(cuid())
+  type      ActivityType
+  actorId   String?
+  reportId  String?
+  details   Json?
+  createdAt DateTime     @default(now())
+
+  actor  User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  report Report? @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+}

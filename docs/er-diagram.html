@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ReportFlow - ER diagram</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  body { margin: 0; padding: 24px; background: #ffffff; font-family: ui-sans-serif, system-ui, sans-serif; color: #0f172a; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p { margin: 0 0 16px; color: #475569; font-size: 13px; }
+  #diagram { background: #fff; display: inline-block; }
+</style>
+</head>
+<body>
+<h1>ReportFlow - Entity Relationship Diagram</h1>
+<p>Source of truth: apps/api/prisma/schema.prisma (PostgreSQL via Prisma). Open this file in a browser or run docs/render-er-diagram.js to export a PNG.</p>
+<div id="diagram">
+<pre class="mermaid">
+erDiagram
+    User ||--o{ Report : "writes"
+    User ||--o{ ReviewHistory : "reviews as manager"
+    User ||--o{ ProjectMember : "assigned to"
+    User ||--o{ ActivityLog : "acts"
+    Project ||--o{ Report : "tags"
+    Project ||--o{ ProjectMember : "has"
+    Report ||--o{ ReportTask : "tasks completed"
+    Report ||--o{ Blocker : "blockers"
+    Report ||--o{ Achievement : "achievements"
+    Report ||--o{ HoursEntry : "hours by category"
+    Report ||--o{ ReportVersion : "snapshot per submission"
+    Report ||--o{ ReviewHistory : "decisions"
+    Report ||--o{ ActivityLog : "events"
+    ReportVersion ||--o{ ReviewHistory : "reviewed version"
+
+    User {
+        string id PK
+        string name
+        string email UK
+        string passwordHash
+        enum role "TEAM_MEMBER | MANAGER | ADMIN"
+        string jobTitle
+        boolean active
+        datetime createdAt
+    }
+    Project {
+        string id PK
+        string name UK
+        string description
+        boolean active "false = archived"
+    }
+    ProjectMember {
+        string userId PK, FK
+        string projectId PK, FK
+        datetime assignedAt
+    }
+    Report {
+        string id PK
+        string userId FK
+        string projectId FK
+        date weekStart "Monday, unique per user"
+        date weekEnd
+        enum status "DRAFT | SUBMITTED | NEEDS_CORRECTION | APPROVED"
+        string nextWeekPlan
+        string notes
+        string links
+        int currentVersion
+        string latestReviewComment
+        datetime firstSubmittedAt
+        datetime submittedAt
+        datetime reviewedAt
+    }
+    ReportTask {
+        string id PK
+        string reportId FK
+        int sortOrder
+        string name
+        enum priority "LOW | MEDIUM | HIGH | CRITICAL"
+        enum status "NOT_STARTED | IN_PROGRESS | COMPLETED | BLOCKED"
+        int plannedPercent
+        int actualPercent
+        float plannedHours
+        float actualHours
+        string output
+    }
+    Blocker {
+        string id PK
+        string reportId FK
+        int sortOrder
+        string description
+        boolean isKey "key issue of the week"
+    }
+    Achievement {
+        string id PK
+        string reportId FK
+        int sortOrder
+        string description
+        boolean isKey "key achievement"
+    }
+    HoursEntry {
+        string id PK
+        string reportId FK
+        enum category "DEVELOPMENT | TESTING | MEETINGS | DOCUMENTATION | DESIGN | SUPPORT | OTHER"
+        float hours
+    }
+    ReportVersion {
+        string id PK
+        string reportId FK
+        int versionNumber "unique per report"
+        datetime submittedAt
+        json snapshot "full content at submission"
+    }
+    ReviewHistory {
+        string id PK
+        string reportId FK
+        string versionId FK
+        string reviewerId FK
+        enum action "APPROVED | CHANGES_REQUESTED"
+        string comment
+        datetime createdAt
+    }
+    ActivityLog {
+        string id PK
+        enum type
+        string actorId FK
+        string reportId FK
+        json details
+        datetime createdAt
+    }
+</pre>
+</div>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'default', er: { useMaxWidth: false, fontSize: 12 } });
+</script>
+</body>
+</html>
