@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>ReportFlow API</title>
+<style>
+  :root { color-scheme: light dark; --fg: #111827; --muted: #6b7280; --bg: #ffffff; --line: #e5e7eb; --code: #f3f4f6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e5e7eb; --muted: #9ca3af; --bg: #0b0f19; --line: #1f2937; --code: #111827; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 34rem; margin: 0 auto; padding: 3rem 1.25rem; }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  p { color: var(--muted); margin: 0 0 1.5rem; }
+  ul { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
+  li { border-bottom: 1px solid var(--line); padding: .7rem 0; }
+  code { background: var(--code); padding: .15rem .4rem; border-radius: 4px;
+         font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  a { color: inherit; }
+</style>
+<main>
+  <h1>ReportFlow API</h1>
+  <p>NestJS service for the Weekly Report Generator. This host serves JSON only &mdash; the web app lives on its own domain.</p>
+  <ul>
+    <li><a href="/health"><code>GET /health</code></a> &mdash; liveness probe</li>
+    <li><code>POST /auth/login</code> &mdash; obtain a bearer token</li>
+    <li><code>GET /reports</code>, <code>/projects</code>, <code>/users</code>, <code>/dashboard/*</code> &mdash; authenticated</li>
+  </ul>
+  <p style="margin-top:1.5rem">Full reference: <code>docs/API.md</code> in the repository.</p>
+</main>
