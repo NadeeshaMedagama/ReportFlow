@@ -6,6 +6,8 @@ name: Deploy production
 #
 # Required secrets on the `production` environment:
 #   PRODUCTION_DATABASE_URL   PostgreSQL connection string for migrations
+#   PRODUCTION_DIRECT_URL     Direct (unpooled) connection for Prisma Migrate;
+#                             optional, defaults to PRODUCTION_DATABASE_URL
 #   DEPLOY_WEBHOOK_URL        Render/Railway/Fly deploy hook (optional)
 #   DEPLOY_WEBHOOK_URL_WEB    Deploy hook for the web app (optional)
 # Optional environment variables:
@@ -127,11 +129,16 @@ jobs:
         run: npx prisma migrate status --schema apps/api/prisma/schema.prisma || true
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.PRODUCTION_DIRECT_URL || secrets.PRODUCTION_DATABASE_URL }}
 
       - name: Apply migrations
         run: npm run db:deploy
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          # Prisma Migrate cannot run through a transaction-mode pooler, so it
+          # uses the direct connection. Falls back to DATABASE_URL for
+          # databases that have no pooler in front of them.
+          DIRECT_URL: ${{ secrets.PRODUCTION_DIRECT_URL || secrets.PRODUCTION_DATABASE_URL }}
 
   # --------------------------------------------------------------------------
   deploy:
