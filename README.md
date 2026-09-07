@@ -16,7 +16,7 @@ weekly-report-generator/
 ├── apps/api        NestJS REST API + Prisma schema, migrations, seed, tests
 ├── apps/web        Next.js frontend
 ├── packages/shared Enums, labels and API contract types shared with the web app
-├── docs/           ER diagram, API reference, CI/CD guide, presentation outline
+├── docs/           ER diagram, API reference, CI/CD guide, Vercel deployment, presentation outline
 ├── .github/        Workflows, Dependabot, issue and PR templates
 ├── action.yml      GitHub Marketplace action (weekly compliance check)
 └── docker-compose.yml  PostgreSQL, plus the full stack under the `full` profile
@@ -29,7 +29,7 @@ weekly-report-generator/
 Prerequisites: **Node.js 18.18+** (tested on Node 22/25), **npm 9+**, and **PostgreSQL 16+** (local install or Docker).
 
 ```bash
-git clone <your-fork-url> weekly-report-generator
+git clone https://github.com/NadeeshaMedagama/ReportFlow.git  # weekly-report-generator
 cd weekly-report-generator
 npm install            # installs api, web and shared (npm workspaces)
 ```
@@ -56,6 +56,11 @@ cp apps/api/.env.example apps/api/.env
 # Homebrew: DATABASE_URL="postgresql://<your-mac-username>@localhost:5432/weekly_reports?schema=public"
 ```
 
+Set `DIRECT_URL` to the same value. Prisma Migrate uses it instead of
+`DATABASE_URL` so that pooled deployments can migrate over a direct connection
+(see [`docs/DEPLOYMENT-VERCEL.md`](docs/DEPLOYMENT-VERCEL.md)); with a local
+database the two are identical.
+
 Apply the schema and load the demo data:
 
 ```bash
@@ -75,13 +80,16 @@ npm run dev:api        # http://localhost:4000 (watch mode)
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | PostgreSQL connection string |
+| `DATABASE_URL` | PostgreSQL connection string used by the running API (pooled, in serverless deployments) |
+| `DIRECT_URL` | Direct connection used by Prisma Migrate; same as `DATABASE_URL` when there is no pooler |
 | `JWT_SECRET` | Secret used to sign access tokens |
 | `JWT_EXPIRES_IN` | Token lifetime (default `8h`) |
-| `PORT` | API port (default `4000`) |
-| `CORS_ORIGIN` | Allowed browser origin(s), comma separated |
+| `PORT` | API port (default `4000`; unused on Vercel) |
+| `CORS_ORIGIN` | Allowed browser origin(s), comma separated. `*` may be used as a wildcard within a host label (`https://*.vercel.app`) or on its own to allow any origin |
 | `ANTHROPIC_API_KEY` | Optional - enables the AI assistant |
 | `ANTHROPIC_MODEL` | Optional - Claude model id (default `claude-opus-5`) |
+| `ASSISTANT_REQUEST_TIMEOUT_MS` | Optional - cap on a single Claude call (default `45000`) |
+| `ASSISTANT_BUDGET_MS` | Optional - cap on the whole tool-use loop (default `50000`) |
 
 ## 4. Running the frontend
 
@@ -91,6 +99,13 @@ npm run dev:web        # http://localhost:3000
 ```
 
 Or start both at once from the repository root: `npm run dev`.
+
+`apps/web/.env.local` variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_API_URL` | Where the browser sends API calls. An absolute URL (`http://localhost:4000`) calls the API directly; a relative path (`/api`) routes through this app's proxy rewrite. Inlined at build time |
+| `API_ORIGIN` | API deployment the `/api/*` rewrite forwards to. Server-side only, and required only when `NEXT_PUBLIC_API_URL` is relative |
 
 ### Demo accounts
 
@@ -233,4 +248,16 @@ and use that port in the seed command.
 
 ## Deployment notes
 
-Split deployment works well: the API on Render / Railway / Fly with a managed PostgreSQL (`DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN` = web URL, run `npx prisma migrate deploy` then `npm run start:api`), the web app on Vercel with `NEXT_PUBLIC_API_URL` pointing at the API.
+**Vercel (both apps).** Two Vercel projects from this repository - `apps/web`
+and `apps/api`, the latter running NestJS as a serverless function - with Neon
+for PostgreSQL. The web app proxies `/api/*` to the API, so the browser stays
+same-origin and there is no CORS to configure. Step-by-step instructions,
+environment variables and troubleshooting are in
+**[`docs/DEPLOYMENT-VERCEL.md`](docs/DEPLOYMENT-VERCEL.md)**.
+
+**Containers.** The Dockerfiles remain the alternative: the API on Render /
+Railway / Fly with a managed PostgreSQL (`DATABASE_URL`, `JWT_SECRET`,
+`CORS_ORIGIN` = web URL, run `npx prisma migrate deploy` then
+`npm run start:api`), the web app anywhere that runs the standalone Next.js
+server. Neither path excludes the other; `main.ts` still serves the container
+and `serverless.ts` is additive.
