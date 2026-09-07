@@ -5,7 +5,7 @@
 # `prisma migrate deploy` on start. Set RUN_MIGRATIONS=false when a deploy job
 # applies migrations instead (see .github/workflows/deploy-production.yml).
 
-FROM node:22-bookworm-slim AS base
+FROM node:26-bookworm-slim AS base
 # OpenSSL is required by the Prisma query engine.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends openssl ca-certificates \
