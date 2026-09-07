@@ -8,11 +8,21 @@
 
 generator client {
   provider = "prisma-client-js"
+  // "native" covers local development and the Docker image; the rhel target is
+  // the query engine for Vercel's serverless runtime (Amazon Linux 2023).
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Pooled connection used by the running API. Serverless scales to many short
+  // lived instances, so this must point at a pooler (Neon/Supabase/PgBouncer);
+  // a direct connection would exhaust PostgreSQL's connection slots.
+  url = env("DATABASE_URL")
+  // Migrations cannot run through a transaction-mode pooler, so Prisma Migrate
+  // uses this direct connection instead. When the database has no pooler in
+  // front of it, set DIRECT_URL to the same value as DATABASE_URL.
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------------------------------------------------------------------------
