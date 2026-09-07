@@ -22,6 +22,16 @@ const MAX_TOOL_ROUNDS = 8;
 const MAX_REPORTS_PER_CALL = 25;
 
 /**
+ * Serverless platforms kill a function once it hits maxDuration (60s on
+ * Vercel) and the caller just sees an opaque 504. These two budgets keep the
+ * assistant inside that window so it can return a real answer instead:
+ * REQUEST caps a single Claude call (the SDK's own default is 10 minutes),
+ * BUDGET caps the whole tool-use loop across all of its rounds.
+ */
+const DEFAULT_REQUEST_TIMEOUT_MS = 45_000;
+const DEFAULT_BUDGET_MS = 50_000;
+
+/**
  * AI chat assistant for managers (assignment section 8).
  *
  * Approach: a single Claude conversation with function calling. The model
@@ -33,6 +43,7 @@ const MAX_REPORTS_PER_CALL = 25;
 export class AssistantService {
   private readonly logger = new Logger(AssistantService.name);
   private readonly client: Anthropic | null;
+  private readonly budgetMs: number;
   readonly model: string;
 
   constructor(
@@ -41,7 +52,15 @@ export class AssistantService {
     private readonly dashboard: DashboardService,
   ) {
     const apiKey = config.get<string>('ANTHROPIC_API_KEY')?.trim();
-    this.client = apiKey ? new Anthropic({ apiKey }) : null;
+    this.budgetMs = positiveNumber(config.get<string>('ASSISTANT_BUDGET_MS'), DEFAULT_BUDGET_MS);
+    this.client = apiKey
+      ? new Anthropic({
+          apiKey,
+          timeout: positiveNumber(config.get<string>('ASSISTANT_REQUEST_TIMEOUT_MS'), DEFAULT_REQUEST_TIMEOUT_MS),
+          // The SDK retries twice by default, which triples the worst case.
+          maxRetries: 1,
+        })
+      : null;
     this.model = config.get<string>('ANTHROPIC_MODEL')?.trim() || DEFAULT_MODEL;
     if (!this.client) this.logger.warn('ANTHROPIC_API_KEY not set - the AI assistant is disabled');
   }
@@ -63,8 +82,18 @@ export class AssistantService {
 
     const conversation: Anthropic.MessageParam[] = messages.map((m) => ({ role: m.role, content: m.content }));
     const toolsUsed: string[] = [];
+    const deadline = Date.now() + this.budgetMs;
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+      if (Date.now() >= deadline) {
+        this.logger.warn(`Assistant budget of ${this.budgetMs}ms exhausted after ${round} round(s)`);
+        return {
+          reply: 'That question took too long to research. Please ask about a narrower time range or team.',
+          toolsUsed,
+          stopReason: 'timeout',
+        };
+      }
+
       const response = await this.createMessage(client, {
         system: this.systemPrompt(user),
         tools: ASSISTANT_TOOLS,
@@ -163,6 +192,12 @@ export class AssistantService {
     } catch (error) {
       if (error instanceof Anthropic.AuthenticationError) {
         throw new ServiceUnavailableException('The AI assistant is misconfigured (invalid API key)');
+      }
+      if (error instanceof Anthropic.APIConnectionTimeoutError) {
+        throw new HttpException(
+          'The AI assistant took too long to respond. Please try a narrower question.',
+          HttpStatus.GATEWAY_TIMEOUT,
+        );
       }
       if (error instanceof Anthropic.RateLimitError) {
         throw new HttpException('The AI assistant is rate limited, please retry shortly', HttpStatus.TOO_MANY_REQUESTS);
@@ -354,4 +389,10 @@ function extractText(message: Anthropic.Message): string {
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+/** Reads a positive millisecond value from configuration, falling back when unset or malformed. */
+function positiveNumber(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
