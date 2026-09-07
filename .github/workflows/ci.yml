@@ -93,6 +93,9 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/weekly_reports_test?schema=public
+      # Prisma Migrate reads DIRECT_URL; the CI database has no pooler, so it
+      # points at the same server.
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/weekly_reports_test?schema=public
       JWT_SECRET: ci-test-secret-not-used-in-production
       CORS_ORIGIN: http://localhost:3000
 
