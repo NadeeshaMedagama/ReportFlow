@@ -1,0 +1,15 @@
+# Only affects `vercel deploy` from the CLI; Git-connected deployments clone the
+# repository instead. Everything here is either rebuilt on Vercel or unused by it.
+node_modules
+.next
+dist
+coverage
+.git
+.github
+.idea
+docs
+weekly-report-generator
+*.log
+*.tsbuildinfo
+.DS_Store
+docker-compose.yml
