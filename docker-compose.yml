@@ -36,6 +36,9 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/weekly_reports?schema=public
+      # The entrypoint runs `prisma migrate deploy`, which reads DIRECT_URL.
+      # No pooler here, so it matches DATABASE_URL.
+      DIRECT_URL: postgresql://postgres:postgres@db:5432/weekly_reports?schema=public
       JWT_SECRET: change-me-to-a-long-random-secret
       JWT_EXPIRES_IN: 8h
       PORT: 4000
