@@ -2,6 +2,10 @@
 
 A full-stack internal tool where team members submit a fixed-structure weekly work report, managers review it (approve or send it back with a comment), and a team dashboard gives managers submission tracking, filters, analytics and an optional AI assistant.
 
+## Live Deployment
+
+Production URL: [https://report-flow-web-git-main-nadeeshamedagamas-projects.vercel.app/](https://report-flow-web-git-main-nadeeshamedagamas-projects.vercel.app/)
+
 | Layer | Stack |
 | --- | --- |
 | Frontend | Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS 4, TanStack Query, Recharts, Zod |
