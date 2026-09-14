@@ -3,7 +3,7 @@
 #   docker build -f apps/web/Dockerfile --build-arg NEXT_PUBLIC_API_URL=https://api.example.com -t reportflow-web .
 # NEXT_PUBLIC_API_URL is inlined at build time, so pass the public API URL as a build argument.
 
-FROM node:22-bookworm-slim AS deps
+FROM node:26-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
@@ -22,7 +22,7 @@ COPY apps/web ./apps/web
 RUN npm run build -w apps/web
 
 # ---- runtime ---------------------------------------------------------------
-FROM node:22-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
