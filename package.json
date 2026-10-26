@@ -25,7 +25,7 @@
     "docker:up": "docker compose --profile full up --build"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^10.0.5"
   },
   "engines": {
     "node": ">=18.18"
